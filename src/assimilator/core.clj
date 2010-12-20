@@ -1,7 +1,10 @@
 (ns assimilator.core)
 
-(def pool [{:name "probe" :damage 0}
-           {:name "zealot" :damage 8}])
+(def options {:pop-size 100
+              :cr-size 10
+              :prob-crossover 60/100 })
+
+(def problem-set {})
 
 (defn edge-ex-rand [per top]
   (let [split (* top (- 1 (* 2 per)))
@@ -9,20 +12,17 @@
     (+ low (rand-int split))))
 
 (defn create-gene [] 
-  (rand-nth pool))
+  (rand-nth (:pool problem-set)))
 
 (defn gene-seq
   ([] (gene-seq (create-gene)))
   ([n] (lazy-seq (cons n (gene-seq (create-gene))))))
 
 (defn create-chromosome []
-  (take 10 (gene-seq)))
-
-(defn test-fitness [chromosome]
-  (reduce + (map #(:damage %) chromosome)))
+  (take (:cr-size options) (gene-seq)))
 
 (defn create-population []
-  (repeatedly 100 create-chromosome))
+  (repeatedly (:pop-size options) create-chromosome))
 
 (defn crossover [c1 c2] 
   (let [slice (edge-ex-rand 10/100 (count c1))
@@ -33,16 +33,11 @@
       (take slice fc1)
       (drop slice fc2))))
 
-(defn valid
-  ([chromosome] (valid chromosome 48))
-  ([chromosome cur-min] 
-   (> (test-fitness chromosome) cur-min)))
-
 (defn probability-bool [perc] 
   (< (rand) perc))
 
 (defn mate [c1 c2]
-  (let [cross? (probability-bool 60/100)]
+  (let [cross? (probability-bool (:prob-crossover options))]
     (if cross? 
       (crossover c1 c2)
       (rand-nth [c1 c2]))))
@@ -54,21 +49,22 @@
     (mate m1 m2)))
 
 (defn refill-population [oldpop]
-  (repeatedly 100 #(random-mate oldpop)))
+  (repeatedly (:pop-size options) #(random-mate oldpop)))
 
-(defn run-ga []
-  (let [population (filter valid (create-population))]
-    (loop [cpop population
-           num 9]
-      (let [pop-fits (sort (map test-fitness cpop))
-            min-fit (first pop-fits)
-            max-fit (last pop-fits)]
-        (if (or (zero? num) (= 80 max-fit))
-          cpop
-          (do
-            (println (str "Population " num " : [" max-fit ", " min-fit "]"))
-            (recur (filter #(valid % min-fit) (refill-population cpop))
-                  (dec num))))))))
+(defn run-ga [ps]
+  (binding [problem-set ps]
+    (let [population (filter (:valid-fn problem-set) (create-population))]
+      (loop [cpop population
+            num (:iter problem-set)]
+        (let [pop-fits (sort (map (:fitness-fn problem-set) cpop))
+              min-fit (first pop-fits)
+              max-fit (last pop-fits)]
+          (if (or (zero? num) (= (:end-fit problem-set) max-fit) (= max-fit min-fit))
+            cpop
+            (do
+              ;;(println (str "Population " num " : [" max-fit ", " min-fit "]"))
+              (recur (filter #((:valid-fn problem-set) % min-fit) (refill-population cpop))
+                    (dec num)))))))))
 
 
 
